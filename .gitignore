@@ -1,24 +1,105 @@
 # Compiled class file
 *.class
+import java.io.*;
+import java.net.*;
+import java.util.*;
 
-# Log file
-*.log
+public class Server {
 
-# BlueJ files
-*.ctxt
+    private static final int PORT = 12345;
+    private static Map<String, ClientHandler> clients = new HashMap<>();
 
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
+    public static void main(String[] args) throws IOException {
+        ServerSocket serverSocket = new ServerSocket(PORT);
 
-# Package Files #
-*.jar
-*.war
-*.nar
-*.ear
-*.zip
-*.tar.gz
-*.rar
+        System.out.println("Server started on port " + PORT);
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-replay_pid*
+        while (true) {
+            Socket socket = serverSocket.accept();
+            System.out.println("Client connected: " + socket);
+
+            ClientHandler clientHandler = new ClientHandler(socket);
+            clientHandler.start();
+        }
+    }
+
+    public static void addClient(String username, ClientHandler clientHandler) {
+        clients.put(username, clientHandler);
+    }
+
+    public static void removeClient(String username) {
+        clients.remove(username);
+    }
+
+    public static void sendPublicMessage(String message, String sender) {
+        for (ClientHandler clientHandler : clients.values()) {
+            if (!clientHandler.getName().equals(sender)) {
+                clientHandler.sendMessage(sender + ": " + message);
+            }
+        }
+    }
+
+    public static void sendPrivateMessage(String message, String sender, String recipient) {
+        ClientHandler recipientHandler = clients.get(recipient);
+        if (recipientHandler != null) {
+            recipientHandler.sendMessage("[Private] " + sender + ": " + message);
+        } else {
+            System.out.println("Invalid recipient: " + recipient);
+        }
+    }
+}
+
+*.class
+import java.io.*;
+import java.net.*;
+
+public class ClientHandler extends Thread {
+    private Socket socket;
+    private PrintWriter out;
+    private BufferedReader in;
+    private String username;
+
+    public ClientHandler(Socket socket) throws IOException {
+        this.socket = socket;
+        out = new PrintWriter(socket.getOutputStream(), true);
+        in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+    }
+
+    public void run() {
+        try {
+            out.println("Enter your username: ");
+            username = in.readLine();
+            Server.addClient(username, this);
+
+            String input;
+            while ((input = in.readLine()) != null) {
+                if (input.startsWith("@")) {
+                    String[] split = input.split(" ", 2);
+                    String recipient = split[0].substring(1);
+                    Server.sendPrivateMessage(split[1], username, recipient);
+                } else {
+                    Server.sendPublicMessage(input, username);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                Server.removeClient(username);
+                in.close();
+                out.close();
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void sendMessage(String message) {
+        out.println(message);
+    }
+
+    public String getUsername() {
+        return username;
+    }
+}
